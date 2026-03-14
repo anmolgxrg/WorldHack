@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SpatialDetector } from "@/components/SpatialDetector";
 
 export const metadata: Metadata = {
   title: "Memory Reliver — Relive Your Memories in 3D",
@@ -8,16 +9,15 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
 };
 
-const isSpatial = process.env.XR_ENV === "avp";
-
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={isSpatial ? "is-spatial" : ""}>
+    <html lang="en">
       <body className="bg-(--bg-main) text-(--text-main) antialiased min-h-screen">
+        <SpatialDetector />
         {children}
       </body>
     </html>
