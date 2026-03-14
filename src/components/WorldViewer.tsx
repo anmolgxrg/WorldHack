@@ -109,7 +109,7 @@ export function WorldViewer({
             scene.background.copy(originalBg);
             ambientLight.color.copy(originalLightColor);
             ambientLight.intensity = originalLightIntensity;
-            splats.recolor = undefined;
+            splats.recolor = new THREE.Color(1, 1, 1);
             splats.opacity = 1.0;
             scene.fog = null;
             console.log("Scene reset to original");
@@ -127,7 +127,7 @@ export function WorldViewer({
             const [sr, sg, sb] = params.splatTint;
             splats.recolor = new THREE.Color(sr / 255, sg / 255, sb / 255);
           } else {
-            splats.recolor = undefined;
+            splats.recolor = new THREE.Color(1, 1, 1);
           }
 
           splats.opacity = params.splatOpacity;
