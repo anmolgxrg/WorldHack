@@ -3,56 +3,68 @@ import { z } from "zod";
 import fs from "fs";
 import path from "path";
 
-// Read photo store directly from disk (shared with Next.js app)
-function getPhotoStore() {
-  const storePath = path.join(process.cwd(), "data", "photos.json");
-  if (!fs.existsSync(storePath)) return { photos: [] };
-  return JSON.parse(fs.readFileSync(storePath, "utf-8"));
+interface Photo {
+  id: string;
+  originalName: string;
+  dateTaken: string | null;
+  description: string;
+  url: string;
+  location?: { name?: string; latitude?: number; longitude?: number };
+  tags?: string[];
 }
 
-function searchPhotosByQuery(query: string) {
+// Read photo store directly from disk (shared with Next.js app)
+function getPhotoStore(): { photos: Photo[] } {
+  const storePath = path.join(process.cwd(), "data", "photos.json");
+  if (!fs.existsSync(storePath)) return { photos: [] };
+  try {
+    return JSON.parse(fs.readFileSync(storePath, "utf-8"));
+  } catch {
+    return { photos: [] };
+  }
+}
+
+const MONTHS = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
+
+function searchPhotosByQuery(query: string): Photo[] {
   const store = getPhotoStore();
   const q = query.toLowerCase();
-  const months = [
-    "january", "february", "march", "april", "may", "june",
-    "july", "august", "september", "october", "november", "december",
-  ];
 
-  return store.photos.filter((photo: { dateTaken: string | null; description: string; originalName: string; location?: string; tags?: string[] }) => {
-    if (!photo.dateTaken) return false;
-
-    const photoDate = new Date(photo.dateTaken);
+  return store.photos.filter((photo) => {
     let matched = false;
 
-    // Year match
-    const yearMatch = q.match(/\b(19|20)\d{2}\b/);
-    if (yearMatch && photoDate.getFullYear().toString() === yearMatch[0]) {
-      matched = true;
-    }
+    // Date-based matching
+    if (photo.dateTaken) {
+      const photoDate = new Date(photo.dateTaken);
 
-    // Month match
-    for (let i = 0; i < months.length; i++) {
-      if (q.includes(months[i]) && photoDate.getMonth() === i) {
+      const yearMatch = q.match(/\b(19|20)\d{2}\b/);
+      if (yearMatch && photoDate.getFullYear().toString() === yearMatch[0]) {
         matched = true;
       }
-    }
 
-    // Day match combined with month/year
-    const dayMatch = q.match(/\b(\d{1,2})(st|nd|rd|th)?\b/);
-    if (dayMatch && matched) {
-      const day = parseInt(dayMatch[1]);
-      if (day >= 1 && day <= 31 && photoDate.getDate() === day) {
-        // Already matched month/year, day also matches
-      } else if (day >= 1 && day <= 31) {
-        matched = photoDate.getDate() === day && matched;
+      for (let i = 0; i < MONTHS.length; i++) {
+        if (q.includes(MONTHS[i]) && photoDate.getMonth() === i) {
+          matched = true;
+        }
+      }
+
+      const dayMatch = q.match(/\b(\d{1,2})(st|nd|rd|th)?\b/);
+      if (dayMatch && matched) {
+        const day = parseInt(dayMatch[1]);
+        if (day >= 1 && day <= 31) {
+          matched = photoDate.getDate() === day && matched;
+        }
       }
     }
 
-    // Text match in description/tags
+    // Text match in description/tags/location name
     const searchable = [
       photo.description || "",
       photo.originalName || "",
-      photo.location || "",
+      photo.location?.name || "",
       ...(photo.tags || []),
     ].join(" ").toLowerCase();
 
@@ -65,7 +77,7 @@ function searchPhotosByQuery(query: string) {
 // Marble API helpers
 const MARBLE_API_BASE = "https://api.worldlabs.ai/marble/v1";
 
-async function marbleHeaders() {
+function marbleHeaders() {
   return {
     "WLT-Api-Key": process.env.MARBLE_API_KEY || "",
     "Content-Type": "application/json",
@@ -73,23 +85,19 @@ async function marbleHeaders() {
 }
 
 async function generateWorldFromPhoto(photoUrl: string, displayName: string) {
-  // If it's a local path, we need to upload it first
   const fullUrl = photoUrl.startsWith("http")
     ? photoUrl
     : `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}${photoUrl}`;
 
   const res = await fetch(`${MARBLE_API_BASE}/worlds:generate`, {
     method: "POST",
-    headers: await marbleHeaders(),
+    headers: marbleHeaders(),
     body: JSON.stringify({
       display_name: displayName,
       model: "Marble 0.1-mini",
       world_prompt: {
         type: "image",
-        image_prompt: {
-          source: "uri",
-          uri: fullUrl,
-        },
+        image_prompt: { source: "uri", uri: fullUrl },
       },
     }),
   });
@@ -123,7 +131,7 @@ async function pollMarbleOperation(operationId: string) {
 export class MemoryAgent extends voice.Agent {
   constructor() {
     super({
-      instructions: `You are the Memory Reliver, a warm and nostalgic AI assistant that helps people relive their past memories as immersive 3D worlds.
+      instructions: `You are SceneForge, a warm and nostalgic AI assistant that helps people relive their past memories as immersive 3D worlds.
 
 Your personality:
 - Warm, empathetic, and nostalgic — like a close friend helping someone revisit cherished moments
@@ -153,7 +161,7 @@ Important:
       tools: {
         search_memories: llm.tool({
           description:
-            "Search through the user's uploaded photo memories by date, description, location, or keywords. Use this when the user asks about a specific time, event, or memory. Returns matching photos with their dates and descriptions.",
+            "Search through the user's uploaded photo memories by date, description, location, or keywords. Use this when the user asks about a specific time, event, or memory.",
           parameters: z.object({
             query: z
               .string()
@@ -173,13 +181,13 @@ Important:
             return {
               found: true,
               photoCount: results.length,
-              photos: results.map((p: { id: string; originalName: string; dateTaken: string | null; description: string; url: string; location?: string }) => ({
+              photos: results.map((p) => ({
                 id: p.id,
                 name: p.originalName,
                 dateTaken: p.dateTaken,
                 description: p.description,
                 url: p.url,
-                location: p.location,
+                location: p.location?.name,
               })),
             };
           },
@@ -187,7 +195,7 @@ Important:
 
         generate_world: llm.tool({
           description:
-            "Generate an immersive 3D world from a photo using the Marble API. Use this after finding photos with search_memories, when the user wants to explore a memory as a 3D environment. The world takes about 30-45 seconds to generate with the mini model.",
+            "Generate an immersive 3D world from a photo using the Marble API. Use this after finding photos with search_memories, when the user wants to explore a memory as a 3D environment. The world takes about 30-45 seconds to generate.",
           parameters: z.object({
             photoId: z
               .string()

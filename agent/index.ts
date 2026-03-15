@@ -6,7 +6,6 @@ import {
   defineAgent,
   voice,
 } from "@livekit/agents";
-import * as openai from "@livekit/agents-plugin-openai";
 import * as silero from "@livekit/agents-plugin-silero";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
@@ -26,19 +25,27 @@ export default defineAgent({
       stt: "deepgram/nova-3",
       llm: "openai/gpt-4o",
       tts: "openai/tts-1",
-      turnDetection: silero.VAD.load(),
     });
+
+    // Connect to the room FIRST, then start the session
+    await ctx.connect();
 
     await session.start({
       agent: new MemoryAgent(),
       room: ctx.room,
     });
 
-    await ctx.connect();
+    // Wait for a remote participant before greeting
+    const participant =
+      ctx.room.remoteParticipants.size > 0
+        ? [...ctx.room.remoteParticipants.values()][0]
+        : await new Promise<any>((resolve) => {
+            ctx.room.once("participantConnected", resolve);
+          });
 
     session.generateReply({
       instructions:
-        "Greet the user warmly. Tell them you're their Memory Reliver — you can help them explore their past memories as immersive 3D worlds. Ask them what memory they'd like to relive, like 'What was I doing on December 1st, 2009?' or 'Show me my vacation photos.'",
+        "Greet the user warmly. Tell them you're SceneForge — you can help them explore their past memories as immersive 3D worlds. Ask them what memory they'd like to relive, like 'What was I doing on December 1st, 2009?' or 'Show me my vacation photos.'",
     });
   },
 });
@@ -46,6 +53,6 @@ export default defineAgent({
 cli.runApp(
   new ServerOptions({
     agent: fileURLToPath(import.meta.url),
-    agentName: "memory-reliver",
+    agentName: "sceneforge",
   })
 );
