@@ -13,3 +13,4 @@ data/photos.json
 Thumbs.db
 .vscode/
 .idea/
+.vercel
